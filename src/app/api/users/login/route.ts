@@ -2,34 +2,37 @@ import {connect} from '@/dbConfig/dbConfig'
 import User from '@/models/userModel'
 import {NextRequest,NextResponse} from 'next/server'
 import bcrypt from "bcryptjs"
-import {sendMail} from '@/helpers/mailer'
+import { use } from 'react'
+import jwt from "jsonwebtoken"
 connect()
 
 export async function POST(request : NextRequest){
     try {
         const reqBody = await request.json()
-        const {username,email,password} =reqBody
+        const {email,password} =reqBody
         console.log(reqBody);
         const user = await User.findOne({email})
-        if(user){
-            return NextResponse.json({error:"User already exists"},{status:400})
+        if(!user){
+            return NextResponse.json({error:"User not exists"},{status:400})
+        }
+        const validPassword = await bcrypt.compare(password,user.password)
+        if(!validPassword){
+            return NextResponse.json({error:"Check your credentials"},{status:400})
         }
 
-        const salt = await bcrypt.genSaltSync(10)
-        const hashedPassword = await bcrypt.hash(password,salt)
-        const newUser = new User({
-            username,email,password:hashedPassword
+        const tokenData = {
+            username : user.username,
+            email : user.email
+        }
+        const token = jwt.sign(tokenData,process.env.TOKEN_SECRET!)
+
+        const response = NextResponse.json({message : "Logged in Success"},{status:200})
+
+        response.cookies.set("token",token,{
+            httpOnly:true
         })
 
-        const saveUser = await newUser.save();
-        console.log(saveUser);
-
-        await sendMail({email,emailType:'VERIFY',userId:saveUser._id})
-        return NextResponse.json({
-            message : "User Registered Successfully",
-            success:true,
-            saveUser
-        })
+        return response
 
 
     } catch (error:any) {
